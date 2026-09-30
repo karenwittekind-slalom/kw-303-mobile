@@ -11,6 +11,7 @@ import StatusBadge from './components/StatusBadge.vue'
 import { patients } from './data/mockData'
 import type { CareStatus } from './data/mockData'
 import { usePatientStore } from './stores/patientStore'
+import { getTimeOfDayGreeting } from './utils/timeOfDay'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -26,12 +27,7 @@ const selectedPatient = computed(
 
 const currentView = computed(() => patientStore.currentView)
 
-const timeOfDay = computed(() => {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
-})
+const timeOfDay = computed(() => getTimeOfDayGreeting())
 
 const filteredPatients = computed(() => {
   const query = patientSearch.value.trim().toLowerCase()

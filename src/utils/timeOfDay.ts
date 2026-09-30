@@ -1,0 +1,11 @@
+export const isDarkTimeOfDay = (date = new Date()) => {
+  const hour = date.getHours()
+  return hour >= 17 || hour < 6
+}
+
+export const getTimeOfDayGreeting = (date = new Date()) => {
+  const hour = date.getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}

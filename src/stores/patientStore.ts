@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { isDarkTimeOfDay } from '../utils/timeOfDay'
 
 type ThemeMode = 'Light' | 'Dark' | 'High Contrast'
 type TextSize = 'Standard' | 'Large' | 'Extra Large'
@@ -13,10 +14,18 @@ const getStoredValue = <T extends string>(key: string, fallback: T): T => {
   return value === null ? fallback : (value as T)
 }
 
+const getDefaultTheme = (): ThemeMode => isDarkTimeOfDay() ? 'Dark' : 'Light'
+
+const getInitialTheme = (): ThemeMode => {
+  if (typeof window === 'undefined') return getDefaultTheme()
+  const hasExplicitTheme = window.localStorage.getItem('wholeStory-theme-explicit') === 'true'
+  return hasExplicitTheme ? getStoredValue<ThemeMode>('wholeStory-theme', getDefaultTheme()) : getDefaultTheme()
+}
+
 export const usePatientStore = defineStore('patientStore', {
   state: () => ({
     selectedPatientId: 1 as number,
-    theme: getStoredValue<ThemeMode>('wholeStory-theme', 'Light'),
+    theme: getInitialTheme(),
     textSize: getStoredValue<TextSize>('wholeStory-text-size', 'Standard'),
     density: getStoredValue<Density>('wholeStory-density', 'Comfortable'),
     motion: getStoredValue<MotionPreference>('wholeStory-motion', 'Standard'),
@@ -33,6 +42,7 @@ export const usePatientStore = defineStore('patientStore', {
     setTheme(theme: ThemeMode) {
       this.theme = theme
       window.localStorage.setItem('wholeStory-theme', theme)
+      window.localStorage.setItem('wholeStory-theme-explicit', 'true')
     },
     setTextSize(size: TextSize) {
       this.textSize = size
