@@ -2,18 +2,19 @@
 import { computed, ref } from 'vue'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { AriaComponent, GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import BrandLogo from './components/BrandLogo.vue'
 import PatientAvatar from './components/PatientAvatar.vue'
+import SeverityBadge from './components/SeverityBadge.vue'
 import StatusBadge from './components/StatusBadge.vue'
 import { patients } from './data/mockData'
 import type { CareStatus } from './data/mockData'
 import { usePatientStore } from './stores/patientStore'
 import { getTimeOfDayGreeting } from './utils/timeOfDay'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+use([LineChart, GridComponent, TooltipComponent, AriaComponent, CanvasRenderer])
 
 const patientStore = usePatientStore()
 const navItems = ['Updates', 'Patients', 'Tasks', 'My Profile'] as const
@@ -24,6 +25,8 @@ const patientFilters = ['All', 'Needs Review', 'Monitoring', 'Improving'] as con
 const selectedPatient = computed(
   () => patients.find((patient) => patient.id === patientStore.selectedPatientId) ?? patients[0]
 )
+
+const selectedPatientFirstName = computed(() => selectedPatient.value.name.split(' ')[0])
 
 const currentView = computed(() => patientStore.currentView)
 
@@ -84,11 +87,23 @@ const careTasks = computed(() => patients.flatMap((patient) => {
 }).sort((firstTask, secondTask) => firstTask.dueOrder - secondTask.dueOrder))
 
 const trendMetrics = [
-  { key: 'pain', label: 'Pain', color: '#dc2626', higherIsBetter: false },
-  { key: 'sleep', label: 'Sleep', color: '#2563eb', higherIsBetter: true },
-  { key: 'energy', label: 'Energy', color: '#d97706', higherIsBetter: true },
-  { key: 'mobility', label: 'Mobility', color: '#0f766e', higherIsBetter: true }
+  { key: 'pain', label: 'Pain', higherIsBetter: false },
+  { key: 'sleep', label: 'Sleep', higherIsBetter: true },
+  { key: 'energy', label: 'Energy', higherIsBetter: true },
+  { key: 'mobility', label: 'Mobility', higherIsBetter: true }
 ] as const
+
+const chartDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+const trendColors = computed(() => {
+  if (patientStore.theme === 'High Contrast') {
+    return { pain: '#ff8a8a', sleep: '#7dd3fc', energy: '#fde047', mobility: '#86efac' }
+  }
+  if (patientStore.theme === 'Dark') {
+    return { pain: '#ff8585', sleep: '#74c7ec', energy: '#f3b562', mobility: '#7ed6ca' }
+  }
+  return { pain: '#c64949', sleep: '#397ca5', energy: '#b87318', mobility: '#188276' }
+})
 
 const trendSummary = computed(() => {
   const trends = selectedPatient.value.trends
@@ -102,56 +117,103 @@ const trendSummary = computed(() => {
 
     return {
       ...metric,
+      color: trendColors.value[metric.key],
       current: latest[metric.key],
       change,
-      status,
-      icon: change > 0 ? 'mdi-arrow-up' : change < 0 ? 'mdi-arrow-down' : 'mdi-minus'
+      status
     }
   })
 })
 
-const chartOptions = computed(() => ({
-  animationDuration: patientStore.motion === 'Reduced Motion' ? 0 : 700,
-  tooltip: { trigger: 'axis' },
-  legend: {
-    bottom: 0,
-    textStyle: { color: patientStore.theme === 'Light' ? '#475569' : '#f8fafc' },
-    data: ['Pain', 'Sleep', 'Energy', 'Mobility']
-  },
-  grid: {
-    left: 14,
-    right: 14,
-    top: 12,
-    bottom: 30,
-    containLabel: true
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: selectedPatient.value.trends.map((point) => point.day),
-    axisLine: { lineStyle: { color: patientStore.theme === 'Light' ? '#cbd5e1' : '#94a3b8' } },
-    axisLabel: { color: patientStore.theme === 'Light' ? '#475569' : '#f8fafc' }
-  },
-  yAxis: {
-    type: 'value',
-    min: 0,
-    max: 10,
-    axisLine: { show: false },
-    axisLabel: { color: patientStore.theme === 'Light' ? '#475569' : '#f8fafc' }
-  },
-  series: [
-    ...trendMetrics.map((metric) => ({
+const connectedSignals = computed(() => selectedPatient.value.keyInsights.map((observation, index) => ({
+  number: String(index + 1).padStart(2, '0'),
+  observation,
+  watch: selectedPatient.value.currentConcerns[index] ?? selectedPatient.value.currentConcerns.at(-1) ?? ''
+})))
+
+const storySentiment = computed(() => {
+  if (selectedPatient.value.status === 'Improving') {
+    return { tone: 'positive', icon: 'mdi-check-circle-outline', label: 'Positive signal' }
+  }
+  return { tone: 'negative', icon: 'mdi-alert-circle-outline', label: 'Negative signal' }
+})
+
+const chartOptions = computed(() => {
+  const isLight = patientStore.theme === 'Light'
+  const isContrast = patientStore.theme === 'High Contrast'
+  const textColor = isLight ? '#5b6f6e' : '#f8fafc'
+  const gridColor = isContrast ? '#ffffff' : isLight ? '#dfe8e5' : '#34504f'
+  const tooltipBackground = isContrast ? '#000000' : isLight ? '#102a2a' : '#f8fafc'
+  const tooltipText = isContrast || isLight ? '#ffffff' : '#152d2d'
+
+  return {
+    animationDuration: patientStore.motion === 'Reduced Motion' ? 0 : 500,
+    animationDurationUpdate: patientStore.motion === 'Reduced Motion' ? 0 : 300,
+    aria: {
+      enabled: true,
+      decal: { show: isContrast },
+      description: `Seven-day patient-reported pain, sleep, energy, and mobility scores for ${selectedPatient.value.name}. Scores range from zero to ten.`
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: tooltipBackground,
+      borderColor: isContrast ? '#ffffff' : tooltipBackground,
+      borderWidth: isContrast ? 1 : 0,
+      padding: [10, 12],
+      textStyle: { color: tooltipText, fontSize: 12 },
+      axisPointer: {
+        type: 'line',
+        lineStyle: { color: isContrast ? '#ffffff' : '#8ca19e', width: 1, type: 'dashed' }
+      },
+      valueFormatter: (value: number | string) => `${value}/10`,
+      extraCssText: 'border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.16);'
+    },
+    grid: {
+      left: 4,
+      right: 8,
+      top: 14,
+      bottom: 4,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: chartDays,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: textColor, fontSize: 11, margin: 12 }
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 10,
+      interval: 5,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: textColor, fontSize: 11, margin: 10 },
+      splitLine: {
+        show: true,
+        lineStyle: { color: gridColor, width: 1, type: isContrast ? 'solid' : 'dashed', opacity: isContrast ? 0.7 : 0.8 }
+      }
+    },
+    series: trendMetrics.map((metric) => ({
       name: metric.label,
       type: 'line' as const,
-      smooth: true,
-      showSymbol: true,
-      symbolSize: 7,
+      smooth: 0.28,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 8,
       data: selectedPatient.value.trends.map((point) => point[metric.key]),
-      lineStyle: { width: 3, color: metric.color },
-      itemStyle: { color: metric.color, borderColor: '#ffffff', borderWidth: 1 }
+      lineStyle: { width: 2.25, color: trendColors.value[metric.key], cap: 'round' },
+      itemStyle: { color: trendColors.value[metric.key] },
+      emphasis: {
+        focus: 'series' as const,
+        scale: true,
+        lineStyle: { width: 3 }
+      }
     }))
-  ]
-}))
+  }
+})
 
 const textSizeClass = computed(() => {
   if (patientStore.textSize === 'Large') return 'text-large'
@@ -204,15 +266,31 @@ const goBackToQueue = () => {
           <strong>{{ selectedPatient.name }}</strong>
           <span>{{ selectedPatient.age }} years • {{ selectedPatient.condition }}</span>
         </div>
-        <blockquote>{{ selectedPatient.patientVoice }}</blockquote>
+        <blockquote>
+          <span>In the patient’s words</span>
+          {{ selectedPatient.patientVoice }}
+        </blockquote>
+
+        <div class="intro-summary-preview">
+          <span class="intro-preview-label">Latest summary</span>
+          <p>{{ selectedPatient.summary }}</p>
+          <div class="intro-next-action">
+            <span>Next best action</span>
+            <strong>{{ selectedPatient.nextAction }}</strong>
+          </div>
+        </div>
+
+        <div class="intro-preview-heading">Seven-day signals</div>
         <div class="intro-signal-list">
-          <div v-for="metric in trendSummary.slice(0, 3)" :key="metric.key">
+          <div v-for="metric in trendSummary" :key="metric.key">
             <span class="trend-swatch" :style="{ backgroundColor: metric.color }"></span>
             <span>{{ metric.label }}</span>
             <strong>{{ metric.current }}/10</strong>
             <small>{{ metric.status }}</small>
           </div>
         </div>
+
+        <div class="intro-preview-heading">Source trail</div>
         <div class="intro-source-list">
           <div v-for="event in selectedPatient.timeline.slice(0, 3)" :key="event.id">
             <span :class="['intro-source-dot', `type-${event.type}`]"></span>
@@ -355,6 +433,17 @@ const goBackToQueue = () => {
                 <p id="story-summary-title" class="eyebrow">Latest summary</p>
                 <p class="story-summary-lead">{{ selectedPatient.summary }}</p>
 
+                <div class="summary-data-points" aria-label="Current seven-day signal summary">
+                  <div v-for="metric in trendSummary" :key="metric.key" class="summary-data-point">
+                    <span class="summary-data-label">
+                      <span class="trend-swatch" :style="{ backgroundColor: metric.color }"></span>
+                      {{ metric.label }}
+                    </span>
+                    <span class="summary-data-value"><strong>{{ metric.current }}</strong><small>/10</small></span>
+                    <small>Score {{ metric.change > 0 ? '+' : '' }}{{ metric.change }} vs day 1</small>
+                  </div>
+                </div>
+
                 <div class="story-summary-focus">
                   <div>
                     <span>Next best action</span>
@@ -366,29 +455,27 @@ const goBackToQueue = () => {
               <section class="summary-signals" aria-labelledby="signals-title">
                 <div class="summary-section-heading">
                   <p class="eyebrow">At a glance</p>
-                  <h2 id="signals-title">What the story is showing</h2>
+                  <h2 id="signals-title">Key story points</h2>
                 </div>
 
-                <div class="signal-groups">
-                  <div class="signal-group concern-signals">
-                    <div class="signal-group-heading">
-                      <v-icon icon="mdi-alert-circle-outline" />
-                      <h3>Watch now</h3>
+                <div class="story-connections">
+                  <article v-for="signal in connectedSignals" :key="signal.number" class="story-connection">
+                    <div class="signal-observation">
+                      <span class="signal-number">{{ signal.number }}</span>
+                      <div>
+                        <span class="signal-label">Observation</span>
+                        <p>{{ signal.observation }}</p>
+                      </div>
                     </div>
-                    <ul>
-                      <li v-for="concern in selectedPatient.currentConcerns" :key="concern">{{ concern }}</li>
-                    </ul>
-                  </div>
 
-                  <div class="signal-group insight-signals">
-                    <div class="signal-group-heading">
-                      <v-icon icon="mdi-lightbulb-outline" />
-                      <h3>Key observations</h3>
+                    <span :class="['signal-sentiment', `sentiment-${storySentiment.tone}`]" role="img" :aria-label="storySentiment.label">
+                      <v-icon :icon="storySentiment.icon" size="small" aria-hidden="true" />
+                    </span>
+
+                    <div class="signal-watch">
+                      <p>{{ signal.watch }}</p>
                     </div>
-                    <ul>
-                      <li v-for="insight in selectedPatient.keyInsights" :key="insight">{{ insight }}</li>
-                    </ul>
-                  </div>
+                  </article>
                 </div>
               </section>
 
@@ -410,16 +497,16 @@ const goBackToQueue = () => {
                       <strong>{{ metric.current }}</strong>
                       <span>/ 10</span>
                     </div>
-                    <div class="trend-direction">
-                      <v-icon :icon="metric.icon" size="small" />
-                      <strong>{{ metric.status }}</strong>
-                    </div>
-                    <small>{{ metric.change > 0 ? '+' : '' }}{{ metric.change }} from start</small>
+                    <small>Score {{ metric.change > 0 ? '+' : '' }}{{ metric.change }} vs day 1</small>
                   </article>
                 </div>
 
                 <div class="chart-card">
-                  <VChart :option="chartOptions" autoresize style="height: 220px; width: 100%;" />
+                  <div class="chart-caption">
+                    <span>Patient-reported score</span>
+                    <span>0–10</span>
+                  </div>
+                  <VChart class="patient-trend-chart" :option="chartOptions" autoresize role="img" aria-label="Seven-day patient-reported health trend chart" />
                 </div>
               </section>
 
@@ -427,7 +514,7 @@ const goBackToQueue = () => {
                 <div class="section-heading compact">
                   <div>
                     <p class="eyebrow">Source trail</p>
-                    <h2>Why the summary changed</h2>
+                    <h2>{{ selectedPatientFirstName }}'s Whole Story</h2>
                   </div>
                 </div>
 
@@ -437,15 +524,18 @@ const goBackToQueue = () => {
                     <div class="timeline-content">
                       <div class="timeline-header">
                         <span>{{ event.time }}</span>
-                        <v-chip size="x-small" :color="event.severity === 'high' ? 'error' : event.severity === 'medium' ? 'warning' : 'success'" variant="tonal">
-                          {{ event.severity }}
-                        </v-chip>
+                        <SeverityBadge :severity="event.severity" />
                       </div>
                       <h3>{{ event.title }}</h3>
                       <p>{{ event.summary }}</p>
                       <small>{{ event.detail }}</small>
                     </div>
                   </article>
+                </div>
+
+                <div class="story-log-cta">
+                  <span>View patient story log</span>
+                  <v-icon icon="mdi-arrow-right" size="small" />
                 </div>
               </section>
             </section>
