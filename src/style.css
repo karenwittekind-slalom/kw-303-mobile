@@ -923,6 +923,11 @@ h3 {
     padding: 14px 12px;
     border-left: 3px solid var(--status-accent, var(--line));
     background: color-mix(in srgb, var(--status-soft, var(--surface)) 28%, var(--surface));
+    transition: background-color 0.16s ease;
+  }
+
+  .task-row:hover {
+    background: var(--surface-hover);
   }
 
   .task-check {
@@ -2319,21 +2324,24 @@ h3 {
 }
 
 .signal-sentiment {
+  --sentiment-color: var(--primary);
   width: 28px;
   height: 28px;
   display: grid;
   place-items: center;
   margin-left: 26px;
   border-radius: 50%;
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--sentiment-color) 10%, transparent);
 }
 
 .sentiment-positive {
-  color: var(--success);
+  --sentiment-color: var(--success);
+  color: var(--sentiment-color);
 }
 
 .sentiment-negative {
-  color: var(--critical);
+  --sentiment-color: var(--critical);
+  color: var(--sentiment-color);
 }
 
 .signal-watch {
